@@ -424,28 +424,31 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
   const [uploading, setUploading] = useState(false);
 
   const safeNumber = (val) => {
-    if (typeof val === 'number') return val;
+    // Se já for número (ex: valores direto do Excel), retorna direto
+    if (typeof val === 'number') {
+      // CNPJs são números grandes; se for um número com mais de 10 dígitos, provavelmente é documento
+      if (val > 9999999999) return 0;
+      return val;
+    }
     if (!val) return 0;
     const s = String(val).trim();
     
     // Suporte para Tempo em Excel (HH:MM)
-    if (s.includes(':') && s.length < 9) {
+    if (/^\d{1,3}:\d{2}(:\d{2})?$/.test(s)) {
       const parts = s.split(':').map(Number);
-      if(parts.length >= 2) {
-        return (isNaN(parts[0]) ? 0 : parts[0]) + (isNaN(parts[1]) ? 0 : parts[1] / 60);
-      }
+      return (isNaN(parts[0]) ? 0 : parts[0]) + (isNaN(parts[1]) ? 0 : parts[1] / 60);
     }
 
-    // Limpeza de moeda brasileira e formatação
+    // Remove símbolos de moeda e espaços, aceita decimais
     const normalized = s
-      .replace('R$', '')
-      .replace(/\s/g, '')
-      .replace(/\.(?=\d{3,}(\,|$))/g, '') // Remove ponto de milhar se houver vírgula depois
+      .replace(/R\$|\s/g, '')
       .replace(',', '.')
-      .replace(/[^\d.]/g, ''); 
+      .replace(/[^\d.]/g, '');
     
     const p = parseFloat(normalized);
-    return isNaN(p) ? 0 : p;
+    // Segurança: rejeita valores absurdamente grandes (CNPJ disfarçado)
+    if (isNaN(p) || p > 9999999) return 0;
+    return p;
   };
 
   const handleAdd = async (e) => {
@@ -474,88 +477,78 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
     setUploading(true);
     try {
       const rows = await readXlsxFile(file);
-      if(rows.length < 2) throw new Error("A planilha precisa ter uma linha de cabeçalho e os dados.");
-      
-      const headerRow = rows[0].map(h => String(h || '').toLowerCase().trim());
-      
-      const getIdx = (keywords, exact = false) => {
-        // Primeiro tenta encontrar palavras exatas (ou cabeçalho idêntico)
-        let idx = headerRow.findIndex(h => keywords.some(k => h === k));
-        if (idx !== -1) return idx;
+      if(rows.length < 2) throw new Error("A planilha precisa ter pelo menos uma linha de cabeçalho e uma de dados.");
 
-        // Se não houver exata, tenta encontrar por inclusão parcial (com cuidado)
-        if (!exact) {
-          idx = headerRow.findIndex(h => keywords.some(k => h.includes(k)));
+      // PASSO 1: Mostrar os cabeçalhos detectados para debug
+      const rawHeaders = rows[0];
+      const headerRow = rawHeaders.map(h => String(h || '').toLowerCase().trim());
+      
+      // PASSO 2: Mapeamento EXATO de colunas (case-insensitive, sem match parcial por padrão)
+      const findCol = (...terms) => {
+        for (const term of terms) {
+          const idx = headerRow.findIndex(h => h === term.toLowerCase().trim());
+          if (idx !== -1) return idx;
         }
-        return idx;
+        return -1;
       };
-      
-      const iName = getIdx(['nome', 'cliente', 'empresa', 'razão', 'razao', 'razão social', 'razao social', 'nome da empresa']);
-      const iDoc = getIdx(['cpf', 'cnpj', 'documento', 'doc', 'cpf/cnpj']);
-      const iPlan = getIdx(['plano', 'pacote', 'serviço', 'servico', 'categoria']);
-      const iFee = getIdx(['mensalidade', 'valor', 'mensal', 'honorário', 'honorario', 'faturamento']);
-      
-      // Para os tempos médios, buscamos termos mais específicos primeiro para não confundir com "Documento Fiscal"
-      const iTmf = getIdx(['tmf', 'fiscal'], true) >= 0 ? getIdx(['tmf', 'fiscal'], true) : getIdx(['tempo f', 'tempo médio f', 'tempo medio f']);
-      const iTmc = getIdx(['tmc', 'contábil', 'contabil'], true) >= 0 ? getIdx(['tmc', 'contábil', 'contabil'], true) : getIdx(['tempo c', 'tempo médio c', 'tempo medio c']);
-      const iTmp = getIdx(['tmp', 'pessoal', 'dp', 'rh'], true) >= 0 ? getIdx(['tmp', 'pessoal', 'dp', 'rh'], true) : getIdx(['tempo p', 'tempo médio p', 'tempo medio p']);
-      const iHours = getIdx(['ttc', 'total contratado', 'tempo total'], true) >= 0 ? getIdx(['ttc', 'total contratado', 'tempo total'], true) : getIdx(['franquia', 'tempo vendido', 'horas totais']);
+
+      const iName = findCol('nome', 'cliente', 'empresa', 'razao social', 'razão social', 'nome da empresa', 'nome empresa');
+      const iDoc  = findCol('cpf/cnpj', 'cnpj', 'cpf', 'documento', 'doc');
+      const iPlan = findCol('plano', 'pacote', 'servico', 'serviço', 'categoria', 'tipo');
+      const iFee  = findCol('mensalidade', 'valor', 'honorario', 'honorário', 'faturamento', 'valor mensal');
+      const iTmf  = findCol('tmf', 'tempo médio fiscal', 'tempo medio fiscal', 'fiscal');
+      const iTmc  = findCol('tmc', 'tempo médio contábil', 'tempo medio contabil', 'contábil', 'contabil');
+      const iTmp  = findCol('tmp', 'tempo médio pessoal', 'tempo medio pessoal', 'pessoal', 'dp');
+      const iTTC  = findCol('ttc', 'tempo total contratado', 'total contratado', 'franquia', 'tempo vendido');
 
       if(iName === -1) {
-         alert("Não consegui identificar a coluna de 'Nome'. Por favor, garanta que a primeira linha da planilha tenha o cabeçalho (ex: Nome, Cliente).");
-         setUploading(false);
-         return;
+        alert(`Não encontrei a coluna de 'Nome/Cliente'.\n\nColunas da sua planilha:\n${rawHeaders.join(' | ')}\n\nPor favor, use um dos seguintes nomes: Nome, Cliente, Empresa, Razao Social`);
+        setUploading(false);
+        return;
       }
 
-      // Previne que TMF pegue a coluna de Documento se ela contiver "Fiscal"
-      const safeIdx = (idx, avoidIdx) => (idx === avoidIdx) ? -1 : idx;
-      
-      const finalTmfIdx = safeIdx(iTmf, iDoc);
-      const finalTmcIdx = safeIdx(iTmc, iDoc);
-      const finalTmpIdx = safeIdx(iTmp, iDoc);
-
       const dataRows = rows.slice(1);
-      
       let successCount = 0;
+
       for(let row of dataRows) {
         const cName = row[iName];
         if(!cName) continue;
 
-        const cFee = iFee >= 0 ? row[iFee] : 0;
-        const cDoc = iDoc >= 0 ? row[iDoc] : null;
+        const cFee  = iFee >= 0  ? row[iFee]  : 0;
+        const cDoc  = iDoc >= 0  ? row[iDoc]  : null;
         const cPlan = iPlan >= 0 ? row[iPlan] : null;
-        const cHours = iHours >= 0 ? row[iHours] : 0;
-        const cTmf = finalTmfIdx >= 0 ? row[finalTmfIdx] : 0;
-        const cTmc = finalTmcIdx >= 0 ? row[finalTmcIdx] : 0;
-        const cTmp = finalTmpIdx >= 0 ? row[finalTmpIdx] : 0;
+        const cTmf  = iTmf >= 0  ? row[iTmf]  : 0;
+        const cTmc  = iTmc >= 0  ? row[iTmc]  : 0;
+        const cTmp  = iTmp >= 0  ? row[iTmp]  : 0;
+        const cTtc  = iTTC >= 0  ? row[iTTC]  : 0;
+
+        const valTmf = safeNumber(cTmf);
+        const valTmc = safeNumber(cTmc);
+        const valTmp = safeNumber(cTmp);
+        // TTC = soma dos médios; se não houver médios, usa coluna TTC diretamente
+        const valTtc = (valTmf + valTmc + valTmp) > 0
+          ? (valTmf + valTmc + valTmp)
+          : safeNumber(cTtc);
 
         try {
-             const valTmf = safeNumber(cTmf);
-             const valTmc = safeNumber(cTmc);
-             const valTmp = safeNumber(cTmp);
-             let valTtc = valTmf + valTmc + valTmp;
-             
-             // Se os médios forem zero, tenta usar a coluna TTC direto
-             if (valTtc === 0) {
-               valTtc = safeNumber(cHours);
-             }
-
-             await onAddClient({
-               name: String(cName),
-               monthly_fee: safeNumber(cFee),
-               contracted_hours: valTtc,
-               document: cDoc ? String(cDoc) : null,
-               plan: cPlan ? String(cPlan) : null,
-               tmf: valTmf,
-               tmc: valTmc,
-               tmp: valTmp
-             });
-             successCount++;
-           } catch(err) {
-             break; // Para a inserção se der erro de banco
-           }
+          await onAddClient({
+            name: String(cName),
+            monthly_fee: safeNumber(cFee),
+            contracted_hours: valTtc,
+            document: cDoc ? String(cDoc) : null,
+            plan: cPlan ? String(cPlan) : null,
+            tmf: valTmf,
+            tmc: valTmc,
+            tmp: valTmp
+          });
+          successCount++;
+        } catch(err) {
+          console.error('Erro ao importar linha:', cName, err);
+          break;
         }
-      if(successCount > 0) alert(`${successCount} clientes importados com sucesso!`);
+      }
+
+      if(successCount > 0) alert(`✅ ${successCount} clientes importados com sucesso!`);
     } catch(err) {
       alert("Erro ao decodificar Planilha Excel. Garanta que o arquivo possui extensão .xlsx\n" + err.message);
     }
