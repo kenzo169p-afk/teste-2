@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabaseClient';
-import { LayoutDashboard, Users, Clock, Settings as SettingsIcon, LogOut, ArrowRight, Activity, DollarSign, Briefcase, FileText, Info, PlayCircle, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, Users, Clock, Settings as SettingsIcon, LogOut, ArrowRight, Activity, DollarSign, Briefcase, FileText, Info, PlayCircle, BarChart3, Upload } from 'lucide-react';
+import readXlsxFile from 'read-excel-file';
 
 // Mantemos apenas o login no LocalStorage para o usuário permanecer logado na máquina
 const getStorage = (key, defaultVal) => {
@@ -109,8 +110,13 @@ export default function App() {
               }} />}
               {view === 'clients' && <Clients clients={clients} onAddClient={async (c) => {
                 const { data, error } = await supabase.from('clients').insert([c]).select();
-                if (data) setClients([...clients, data[0]]);
-                if (error) alert("Erro: " + error.message);
+                if (data && data.length > 0) {
+                  setClients(prev => [...prev, data[0]]);
+                }
+                if (error) { 
+                  alert("Erro no Banco. Verifique se criou as novas colunas TMF, TMC, TMP e CPF/CNPJ no Supabase!\n\nDetalhe: " + error.message);
+                  throw error; /* for the frontend to catch */
+                }
               }} onDeleteClient={async (id) => {
                 await supabase.from('clients').delete().eq('id', id);
                 setClients(clients.filter(c => c.id !== id));
@@ -392,28 +398,93 @@ function Clients({ clients, onAddClient, onDeleteClient }) {
   const [name, setName] = useState('');
   const [fee, setFee] = useState('');
   const [hours, setHours] = useState('');
+  const [document, setDocument] = useState('');
+  const [tmf, setTmf] = useState('');
+  const [tmc, setTmc] = useState('');
+  const [tmp, setTmp] = useState('');
+  const [uploading, setUploading] = useState(false);
 
-  const handleAdd = (e) => {
+  const handleAdd = async (e) => {
     e.preventDefault();
     if(name && fee && hours) {
-      onAddClient({ name, monthly_fee: parseFloat(fee), contracted_hours: parseFloat(hours) });
-      setName(''); setFee(''); setHours('');
+      try {
+        await onAddClient({ 
+          name, 
+          monthly_fee: parseFloat(fee), 
+          contracted_hours: parseFloat(hours),
+          document: document || null,
+          tmf: parseFloat(tmf||0),
+          tmc: parseFloat(tmc||0),
+          tmp: parseFloat(tmp||0)
+        });
+        setName(''); setFee(''); setHours(''); setDocument(''); setTmf(''); setTmc(''); setTmp('');
+      } catch(e) {}
     }
+  };
+
+  const handleExcelUpload = async (e) => {
+    const file = e.target.files[0];
+    if(!file) return;
+    setUploading(true);
+    try {
+      const rows = await readXlsxFile(file);
+      const dataRows = rows.slice(1);
+      
+      let successCount = 0;
+      for(let row of dataRows) {
+        // Exemplo esperado de Colunas: Nome | Mensalidade | Horas | CPF/CNPJ | TMF | TMC | TMP
+        const [cName, cFee, cHours, cDoc, cTmf, cTmc, cTmp] = row;
+        if(cName) {
+           try {
+             await onAddClient({
+               name: String(cName),
+               monthly_fee: parseFloat(cFee||0),
+               contracted_hours: parseFloat(cHours||0),
+               document: cDoc ? String(cDoc) : null,
+               tmf: parseFloat(cTmf||0),
+               tmc: parseFloat(cTmc||0),
+               tmp: parseFloat(cTmp||0)
+             });
+             successCount++;
+           } catch(err) {
+             break; // Para a inserção se der erro de banco
+           }
+        }
+      }
+      if(successCount > 0) alert(`${successCount} clientes importados com sucesso!`);
+    } catch(err) {
+      alert("Erro ao decodificar Planilha Excel. Garanta que o arquivo possui extensão .xlsx\n" + err.message);
+    }
+    setUploading(false);
+    e.target.value = ''; 
   };
 
   return (
     <div className="container">
-      <div className="page-header">
-        <h1 className="page-title"><Users size={28} color="var(--primary)" /> Gerenciar Clientes</h1>
-        <p className="page-subtitle">Adicione ou remova clientes do escritório</p>
+      <div className="page-header flex justify-between items-center" style={{ flexWrap: 'wrap' }}>
+        <div>
+          <h1 className="page-title"><Users size={28} color="var(--primary)" /> Gerenciar Clientes</h1>
+          <p className="page-subtitle">Adicione manualmente, ou importe via Excel (XLSX)</p>
+        </div>
+        <div>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: 'var(--success)', color: '#fff', padding: '0.75rem 1.5rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>
+            {uploading ? 'Importando...' : <><Upload size={20} /> Importar Excel</>}
+            <input type="file" accept=".xlsx" onChange={handleExcelUpload} style={{ display: 'none' }} disabled={uploading} />
+          </label>
+        </div>
       </div>
 
       <div className="card">
-        <h3>Adicionar Novo Cliente</h3>
+        <h3>Adicionar Manualmente</h3>
         <form onSubmit={handleAdd} className="grid grid-3" style={{ marginTop: '1rem', alignItems: 'end' }}>
-          <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>Nome da Empresa</label><input placeholder="Ex: Acme Corp" value={name} onChange={e => setName(e.target.value)} style={{marginBottom: 0}} /></div>
-          <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>Mensalidade (R$)</label><input type="number" step="0.01" value={fee} onChange={e => setFee(e.target.value)} style={{marginBottom: 0}} /></div>
-          <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>Tempo Vendido (Horas/mês)</label><input type="number" step="1" value={hours} onChange={e => setHours(e.target.value)} style={{marginBottom: 0}} /></div>
+          <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>Nome da Empresa *</label><input placeholder="Ex: Acme Corp" required value={name} onChange={e => setName(e.target.value)} style={{marginBottom: 0}} /></div>
+          <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>CPF/CNPJ</label><input placeholder="Documento Fiscal" value={document} onChange={e => setDocument(e.target.value)} style={{marginBottom: 0}} /></div>
+          <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>Mensalidade (R$) *</label><input type="number" step="0.01" required value={fee} onChange={e => setFee(e.target.value)} style={{marginBottom: 0}} /></div>
+          <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>Tempo Vendido (Horas/mês) *</label><input type="number" step="1" required value={hours} onChange={e => setHours(e.target.value)} style={{marginBottom: 0}} /></div>
+          
+          <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>TMF (Tempo Médio Fiscal)</label><input type="number" step="0.01" value={tmf} placeholder="Horas" onChange={e => setTmf(e.target.value)} style={{marginBottom: 0}} /></div>
+          <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>TMC (Tempo Médio Contábil)</label><input type="number" step="0.01" value={tmc} placeholder="Horas" onChange={e => setTmc(e.target.value)} style={{marginBottom: 0}} /></div>
+          <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>TMP (Tempo Médio Pessoal)</label><input type="number" step="0.01" value={tmp} placeholder="Horas" onChange={e => setTmp(e.target.value)} style={{marginBottom: 0}} /></div>
           <div style={{ gridColumn: '1 / -1' }}><button type="submit" className="btn-primary">Cadastrar na Carteira</button></div>
         </form>
       </div>
@@ -421,13 +492,17 @@ function Clients({ clients, onAddClient, onDeleteClient }) {
       <div className="card" style={{ overflowX: 'auto' }}>
         <h3>Carteira de Clientes ({clients.length})</h3>
         <table>
-          <thead><tr><th>Cliente</th><th>Mensalidade</th><th>Tempo Contrato</th><th>Ação</th></tr></thead>
+          <thead><tr><th>Cliente</th><th>CPF/CNPJ</th><th>Mensalidade</th><th>Tempo Contrato</th><th>TMF</th><th>TMC</th><th>TMP</th><th>Ação</th></tr></thead>
           <tbody>
             {clients.map(c => (
               <tr key={c.id}>
                 <td style={{ fontWeight: 500 }}>{c.name}</td>
+                <td>{c.document || '-'}</td>
                 <td>R$ {parseFloat(c.monthly_fee).toFixed(2)}</td>
-                <td>{c.contracted_hours} horas</td>
+                <td>{c.contracted_hours} h</td>
+                <td>{c.tmf || 0} h</td>
+                <td>{c.tmc || 0} h</td>
+                <td>{c.tmp || 0} h</td>
                 <td><button className="danger" onClick={() => onDeleteClient(c.id)}>Excluir</button></td>
               </tr>
             ))}
