@@ -102,29 +102,47 @@ export default function App() {
             </div>
           ) : (
             <>
-              {view === 'dashboard' && <Dashboard user={user} clients={clients} logs={logs} config={config} setView={setView} />}
-              {view === 'timesheet' && <Timesheet user={user} clients={clients} logs={logs} onAddLog={async (log) => {
-                const { data, error } = await supabase.from('logs').insert([log]).select();
-                if (data) setLogs([data[0], ...logs]);
-                if (error) alert("Erro: " + error.message);
-              }} />}
-              {view === 'clients' && <Clients clients={clients} onAddClient={async (c) => {
-                const { data, error } = await supabase.from('clients').insert([c]).select();
-                if (data && data.length > 0) {
-                  setClients(prev => [...prev, data[0]]);
-                }
-                if (error) { 
-                  alert("Erro no Banco. Verifique se criou as novas colunas TMF, TMC, TMP e CPF/CNPJ no Supabase!\n\nDetalhe: " + error.message);
-                  throw error; /* for the frontend to catch */
-                }
-              }} onDeleteClient={async (id) => {
-                await supabase.from('clients').delete().eq('id', id);
-                setClients(clients.filter(c => c.id !== id));
-              }} />}
-              {view === 'settings' && <Settings config={config} onSaveConfig={async (cost) => {
-                const { data, error } = await supabase.from('config').update({ hourly_cost: cost }).eq('id', config.id || 1).select();
-                if(data && data.length > 0) setConfig(data[0]);
-              }} />}
+              <div style={{ display: view === 'dashboard' ? 'block' : 'none' }}>
+                <Dashboard user={user} clients={clients} logs={logs} config={config} setView={setView} />
+              </div>
+              
+              <div style={{ display: view === 'timesheet' ? 'block' : 'none' }}>
+                <Timesheet user={user} clients={clients} logs={logs} onAddLog={async (log) => {
+                  const { data, error } = await supabase.from('logs').insert([log]).select();
+                  if (data) setLogs([data[0], ...logs]);
+                  if (error) alert("Erro ao salvar log: " + error.message);
+                }} />
+              </div>
+
+              <div style={{ display: view === 'clients' ? 'block' : 'none' }}>
+                <Clients clients={clients} onAddClient={async (c) => {
+                  const { data, error } = await supabase.from('clients').insert([c]).select();
+                  if (data && data.length > 0) {
+                    setClients(prev => [...prev, data[0]]);
+                  }
+                  if (error) { 
+                    alert("Erro no Banco. Verifique se criou as novas colunas TMF, TMC, TMP e CPF/CNPJ no Supabase!\n\nDetalhe: " + error.message);
+                    throw error; 
+                  }
+                }} onDeleteClient={async (id) => {
+                  await supabase.from('clients').delete().eq('id', id);
+                  setClients(prev => prev.filter(c => c.id !== id));
+                }} onDeleteAllClients={async () => {
+                  if(window.confirm("ATENÇÃO: Deseja realmente excluir TODOS os clientes da carteira? Esta ação é irreversível!")) {
+                    const { error } = await supabase.from('clients').delete().neq('id', 0);
+                    if (error) alert("Erro ao excluir: " + error.message + ". O banco pode estar impedindo exclusão devido a logs vinculados.");
+                    else setClients([]);
+                  }
+                }} />
+              </div>
+
+              <div style={{ display: view === 'settings' ? 'block' : 'none' }}>
+                <Settings config={config} onSaveConfig={async (cost) => {
+                  const { data, error } = await supabase.from('config').upsert({ id: config?.id || 1, hourly_cost: cost }).select();
+                  if(data && data.length > 0) setConfig(data[0]);
+                  if(error) alert("Erro ao salvar config: " + error.message);
+                }} />
+              </div>
             </>
           )}
         </main>
@@ -394,7 +412,7 @@ function Timesheet({ user, clients, logs, onAddLog }) {
   );
 }
 
-function Clients({ clients, onAddClient, onDeleteClient }) {
+function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
   const [name, setName] = useState('');
   const [fee, setFee] = useState('');
   const [hours, setHours] = useState('');
@@ -495,7 +513,14 @@ function Clients({ clients, onAddClient, onDeleteClient }) {
       </div>
 
       <div className="card" style={{ overflowX: 'auto' }}>
-        <h3>Carteira de Clientes ({clients.length})</h3>
+        <div className="flex justify-between items-center" style={{ marginBottom: '1rem' }}>
+          <h3 style={{ margin: 0 }}>Carteira de Clientes ({clients.length})</h3>
+          {clients.length > 0 && (
+            <button className="danger" onClick={onDeleteAllClients} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}>
+              Excluir Todos os {clients.length} Clientes
+            </button>
+          )}
+        </div>
         <table>
           <thead><tr><th>Cliente</th><th>CPF/CNPJ</th><th>Mensalidade</th><th>Tempo Contrato</th><th>TMF</th><th>TMC</th><th>TMP</th><th>Ação</th></tr></thead>
           <tbody>
