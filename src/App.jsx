@@ -404,18 +404,23 @@ function Clients({ clients, onAddClient, onDeleteClient }) {
   const [tmp, setTmp] = useState('');
   const [uploading, setUploading] = useState(false);
 
+  const safeNumber = (val) => {
+    const p = parseFloat(val);
+    return isNaN(p) ? 0 : p;
+  };
+
   const handleAdd = async (e) => {
     e.preventDefault();
     if(name && fee && hours) {
       try {
         await onAddClient({ 
           name, 
-          monthly_fee: parseFloat(fee), 
-          contracted_hours: parseFloat(hours),
+          monthly_fee: safeNumber(fee), 
+          contracted_hours: safeNumber(hours),
           document: document || null,
-          tmf: parseFloat(tmf||0),
-          tmc: parseFloat(tmc||0),
-          tmp: parseFloat(tmp||0)
+          tmf: safeNumber(tmf),
+          tmc: safeNumber(tmc),
+          tmp: safeNumber(tmp)
         });
         setName(''); setFee(''); setHours(''); setDocument(''); setTmf(''); setTmc(''); setTmp('');
       } catch(e) {}
@@ -438,12 +443,12 @@ function Clients({ clients, onAddClient, onDeleteClient }) {
            try {
              await onAddClient({
                name: String(cName),
-               monthly_fee: parseFloat(cFee||0),
-               contracted_hours: parseFloat(cHours||0),
+               monthly_fee: safeNumber(cFee),
+               contracted_hours: safeNumber(cHours),
                document: cDoc ? String(cDoc) : null,
-               tmf: parseFloat(cTmf||0),
-               tmc: parseFloat(cTmc||0),
-               tmp: parseFloat(cTmp||0)
+               tmf: safeNumber(cTmf),
+               tmc: safeNumber(cTmc),
+               tmp: safeNumber(cTmp)
              });
              successCount++;
            } catch(err) {
