@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabaseClient';
-import { LayoutDashboard, Users, Clock, Settings, LogOut, ArrowRight, Activity, DollarSign, Briefcase, FileText } from 'lucide-react';
+import { LayoutDashboard, Users, Clock, Settings as SettingsIcon, LogOut, ArrowRight, Activity, DollarSign, Briefcase, FileText } from 'lucide-react';
 
 // Mantemos apenas o login no LocalStorage para o usuário permanecer logado na máquina
 const getStorage = (key, defaultVal) => {
@@ -64,7 +64,7 @@ export default function App() {
                 <Users size={20} /> Clientes
               </button>
               <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>
-                <Settings size={20} /> Escritório
+                <SettingsIcon size={20} /> Escritório
               </button>
             </>
           )}
@@ -425,7 +425,7 @@ function Settings({ config, onSaveConfig }) {
   return (
     <div className="container">
       <div className="page-header">
-        <h1 className="page-title"><Settings size={28} color="var(--primary)" /> Configurações Gerais</h1>
+        <h1 className="page-title"><SettingsIcon size={28} color="var(--primary)" /> Configurações Gerais</h1>
         <p className="page-subtitle">Ajuste de métricas globais e custos operacionais</p>
       </div>
 
