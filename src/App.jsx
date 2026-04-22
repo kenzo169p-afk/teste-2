@@ -477,22 +477,42 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
       if(rows.length < 2) throw new Error("A planilha precisa ter uma linha de cabeçalho e os dados.");
       
       const headerRow = rows[0].map(h => String(h || '').toLowerCase().trim());
-      const getIdx = (words) => headerRow.findIndex(h => words.some(w => h.includes(w)));
       
-      const iName = getIdx(['nome', 'cliente', 'empresa', 'razão', 'razao']);
-      const iDoc = getIdx(['cpf', 'cnpj', 'documento', 'doc']);
+      const getIdx = (keywords, exact = false) => {
+        // Primeiro tenta encontrar palavras exatas (ou cabeçalho idêntico)
+        let idx = headerRow.findIndex(h => keywords.some(k => h === k));
+        if (idx !== -1) return idx;
+
+        // Se não houver exata, tenta encontrar por inclusão parcial (com cuidado)
+        if (!exact) {
+          idx = headerRow.findIndex(h => keywords.some(k => h.includes(k)));
+        }
+        return idx;
+      };
+      
+      const iName = getIdx(['nome', 'cliente', 'empresa', 'razão', 'razao', 'razão social', 'razao social', 'nome da empresa']);
+      const iDoc = getIdx(['cpf', 'cnpj', 'documento', 'doc', 'cpf/cnpj']);
       const iPlan = getIdx(['plano', 'pacote', 'serviço', 'servico', 'categoria']);
       const iFee = getIdx(['mensalidade', 'valor', 'mensal', 'honorário', 'honorario', 'faturamento']);
-      const iHours = getIdx(['ttc', 'total contratado', 'franquia', 'tempo total', 'vendido', 'horas totais']);
-      const iTmf = getIdx(['tmf', 'fiscal', 'tempo f']);
-      const iTmc = getIdx(['tmc', 'contábil', 'contabil', 'tempo c']);
-      const iTmp = getIdx(['tmp', 'pessoal', 'dp', 'rh', 'folha']);
+      
+      // Para os tempos médios, buscamos termos mais específicos primeiro para não confundir com "Documento Fiscal"
+      const iTmf = getIdx(['tmf', 'fiscal'], true) >= 0 ? getIdx(['tmf', 'fiscal'], true) : getIdx(['tempo f', 'tempo médio f', 'tempo medio f']);
+      const iTmc = getIdx(['tmc', 'contábil', 'contabil'], true) >= 0 ? getIdx(['tmc', 'contábil', 'contabil'], true) : getIdx(['tempo c', 'tempo médio c', 'tempo medio c']);
+      const iTmp = getIdx(['tmp', 'pessoal', 'dp', 'rh'], true) >= 0 ? getIdx(['tmp', 'pessoal', 'dp', 'rh'], true) : getIdx(['tempo p', 'tempo médio p', 'tempo medio p']);
+      const iHours = getIdx(['ttc', 'total contratado', 'tempo total'], true) >= 0 ? getIdx(['ttc', 'total contratado', 'tempo total'], true) : getIdx(['franquia', 'tempo vendido', 'horas totais']);
 
       if(iName === -1) {
-         alert("Não consegui identificar a coluna de 'Nome'. Use um cabeçalho como 'Cliente' ou 'Empresa'.");
+         alert("Não consegui identificar a coluna de 'Nome'. Por favor, garanta que a primeira linha da planilha tenha o cabeçalho (ex: Nome, Cliente).");
          setUploading(false);
          return;
       }
+
+      // Previne que TMF pegue a coluna de Documento se ela contiver "Fiscal"
+      const safeIdx = (idx, avoidIdx) => (idx === avoidIdx) ? -1 : idx;
+      
+      const finalTmfIdx = safeIdx(iTmf, iDoc);
+      const finalTmcIdx = safeIdx(iTmc, iDoc);
+      const finalTmpIdx = safeIdx(iTmp, iDoc);
 
       const dataRows = rows.slice(1);
       
@@ -505,9 +525,9 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
         const cDoc = iDoc >= 0 ? row[iDoc] : null;
         const cPlan = iPlan >= 0 ? row[iPlan] : null;
         const cHours = iHours >= 0 ? row[iHours] : 0;
-        const cTmf = iTmf >= 0 ? row[iTmf] : 0;
-        const cTmc = iTmc >= 0 ? row[iTmc] : 0;
-        const cTmp = iTmp >= 0 ? row[iTmp] : 0;
+        const cTmf = finalTmfIdx >= 0 ? row[finalTmfIdx] : 0;
+        const cTmc = finalTmcIdx >= 0 ? row[finalTmcIdx] : 0;
+        const cTmp = finalTmpIdx >= 0 ? row[finalTmpIdx] : 0;
 
         try {
              const valTmf = safeNumber(cTmf);
