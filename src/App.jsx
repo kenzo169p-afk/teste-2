@@ -415,7 +415,6 @@ function Timesheet({ user, clients, logs, onAddLog }) {
 function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
   const [name, setName] = useState('');
   const [fee, setFee] = useState('');
-  const [hours, setHours] = useState('');
   const [document, setDocument] = useState('');
   const [plan, setPlan] = useState('');
   const [tmf, setTmf] = useState('');
@@ -423,30 +422,22 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
   const [tmp, setTmp] = useState('');
   const [uploading, setUploading] = useState(false);
 
+  // Estado do modal de mapeamento Excel
+  const [excelModal, setExcelModal] = useState(null); // { headers, rows, mapping }
+
   const safeNumber = (val) => {
-    // Se já for número (ex: valores direto do Excel), retorna direto
     if (typeof val === 'number') {
-      // CNPJs são números grandes; se for um número com mais de 10 dígitos, provavelmente é documento
-      if (val > 9999999999) return 0;
+      if (val > 9999999999) return 0; // CNPJ disfarçado
       return val;
     }
     if (!val) return 0;
     const s = String(val).trim();
-    
-    // Suporte para Tempo em Excel (HH:MM)
     if (/^\d{1,3}:\d{2}(:\d{2})?$/.test(s)) {
       const parts = s.split(':').map(Number);
       return (isNaN(parts[0]) ? 0 : parts[0]) + (isNaN(parts[1]) ? 0 : parts[1] / 60);
     }
-
-    // Remove símbolos de moeda e espaços, aceita decimais
-    const normalized = s
-      .replace(/R\$|\s/g, '')
-      .replace(',', '.')
-      .replace(/[^\d.]/g, '');
-    
+    const normalized = s.replace(/R\$|\s/g, '').replace(',', '.').replace(/[^\d.]/g, '');
     const p = parseFloat(normalized);
-    // Segurança: rejeita valores absurdamente grandes (CNPJ disfarçado)
     if (isNaN(p) || p > 9999999) return 0;
     return p;
   };
@@ -457,122 +448,124 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
     if(name && fee) {
       try {
         await onAddClient({ 
-          name, 
-          monthly_fee: safeNumber(fee), 
-          contracted_hours: calculatedTtc,
-          document: document || null,
-          plan: plan || null,
-          tmf: safeNumber(tmf),
-          tmc: safeNumber(tmc),
-          tmp: safeNumber(tmp)
+          name, monthly_fee: safeNumber(fee), contracted_hours: calculatedTtc,
+          document: document || null, plan: plan || null,
+          tmf: safeNumber(tmf), tmc: safeNumber(tmc), tmp: safeNumber(tmp)
         });
         setName(''); setFee(''); setDocument(''); setPlan(''); setTmf(''); setTmc(''); setTmp('');
       } catch(e) {}
     }
   };
 
-  const handleExcelUpload = async (e) => {
+  // Passo 1: ler o arquivo e abrir o modal
+  const handleExcelSelect = async (e) => {
     const file = e.target.files[0];
     if(!file) return;
-    setUploading(true);
+    e.target.value = '';
     try {
       const rows = await readXlsxFile(file);
-      if(rows.length < 2) throw new Error("A planilha precisa ter pelo menos uma linha de cabeçalho e uma de dados.");
-
-      // PASSO 1: Mostrar os cabeçalhos detectados para debug
-      const rawHeaders = rows[0];
-      const headerRow = rawHeaders.map(h => String(h || '').toLowerCase().trim());
-      
-      // PASSO 2: Mapeamento EXATO de colunas (case-insensitive, sem match parcial por padrão)
-      const findCol = (...terms) => {
-        for (const term of terms) {
-          const idx = headerRow.findIndex(h => h === term.toLowerCase().trim());
-          if (idx !== -1) return idx;
-        }
-        return -1;
-      };
-
-      const iName = findCol('nome', 'cliente', 'empresa', 'razao social', 'razão social', 'nome da empresa', 'nome empresa');
-      const iDoc  = findCol('cpf/cnpj', 'cnpj', 'cpf', 'documento', 'doc');
-      const iPlan = findCol('plano', 'pacote', 'servico', 'serviço', 'categoria', 'tipo');
-      const iFee  = findCol('mensalidade', 'valor', 'honorario', 'honorário', 'faturamento', 'valor mensal');
-      const iTmf  = findCol('tmf', 'tempo médio fiscal', 'tempo medio fiscal', 'fiscal');
-      const iTmc  = findCol('tmc', 'tempo médio contábil', 'tempo medio contabil', 'contábil', 'contabil');
-      const iTmp  = findCol('tmp', 'tempo médio pessoal', 'tempo medio pessoal', 'pessoal', 'dp');
-      const iTTC  = findCol('ttc', 'tempo total contratado', 'total contratado', 'franquia', 'tempo vendido');
-
-      if(iName === -1) {
-        alert(`Não encontrei a coluna de 'Nome/Cliente'.\n\nColunas detectadas na sua planilha:\n${rawHeaders.map((h,i) => `  Col ${i+1}: "${h}"`).join('\n')}\n\nUse um dos cabeçalhos: Nome, Cliente, Empresa, Razao Social`);
-        setUploading(false);
-        return;
-      }
-
-      // DEBUG: mostra o mapeamento encontrado para o usuário confirmar
-      const mapReport = [
-        `Nome: col ${iName+1} = "${rawHeaders[iName]}"`,
-        iDoc  >= 0 ? `Documento: col ${iDoc+1}  = "${rawHeaders[iDoc]}"` : `Documento: NÃO ENCONTRADO`,
-        iPlan >= 0 ? `Plano: col ${iPlan+1}     = "${rawHeaders[iPlan]}"` : `Plano: NÃO ENCONTRADO`,
-        iFee  >= 0 ? `Mensalidade: col ${iFee+1} = "${rawHeaders[iFee]}"` : `Mensalidade: NÃO ENCONTRADO`,
-        iTmf  >= 0 ? `TMF: col ${iTmf+1}        = "${rawHeaders[iTmf]}"` : `TMF: NÃO ENCONTRADO (ficará 0)`,
-        iTmc  >= 0 ? `TMC: col ${iTmc+1}        = "${rawHeaders[iTmc]}"` : `TMC: NÃO ENCONTRADO (ficará 0)`,
-        iTmp  >= 0 ? `TMP: col ${iTmp+1}        = "${rawHeaders[iTmp]}"` : `TMP: NÃO ENCONTRADO (ficará 0)`,
-        iTTC  >= 0 ? `TTC: col ${iTTC+1}        = "${rawHeaders[iTTC]}"` : `TTC: NÃO ENCONTRADO (ficará 0)`,
-      ].join('\n');
-      
-      const confirm = window.confirm(`Mapeamento de colunas detectado:\n\n${mapReport}\n\nDeseja prosseguir com a importação?`);
-      if (!confirm) { setUploading(false); return; }
-
-      const dataRows = rows.slice(1);
-      let successCount = 0;
-
-      for(let row of dataRows) {
-        const cName = row[iName];
-        if(!cName) continue;
-
-        const cFee  = iFee >= 0  ? row[iFee]  : 0;
-        const cDoc  = iDoc >= 0  ? row[iDoc]  : null;
-        const cPlan = iPlan >= 0 ? row[iPlan] : null;
-        const cTmf  = iTmf >= 0  ? row[iTmf]  : 0;
-        const cTmc  = iTmc >= 0  ? row[iTmc]  : 0;
-        const cTmp  = iTmp >= 0  ? row[iTmp]  : 0;
-        const cTtc  = iTTC >= 0  ? row[iTTC]  : 0;
-
-        const valTmf = safeNumber(cTmf);
-        const valTmc = safeNumber(cTmc);
-        const valTmp = safeNumber(cTmp);
-        // TTC = soma dos médios; se não houver médios, usa coluna TTC diretamente
-        const valTtc = (valTmf + valTmc + valTmp) > 0
-          ? (valTmf + valTmc + valTmp)
-          : safeNumber(cTtc);
-
-        try {
-          await onAddClient({
-            name: String(cName),
-            monthly_fee: safeNumber(cFee),
-            contracted_hours: valTtc,
-            document: cDoc ? String(cDoc) : null,
-            plan: cPlan ? String(cPlan) : null,
-            tmf: valTmf,
-            tmc: valTmc,
-            tmp: valTmp
-          });
-          successCount++;
-        } catch(err) {
-          console.error('Erro ao importar linha:', cName, err);
-          break;
-        }
-      }
-
-      if(successCount > 0) alert(`✅ ${successCount} clientes importados com sucesso!`);
+      if(rows.length < 2) { alert('Planilha vazia ou sem dados.'); return; }
+      const headers = rows[0].map(h => String(h || '').trim());
+      const NONE = '';
+      setExcelModal({
+        headers,
+        rows: rows.slice(1),
+        mapping: { name: NONE, document: NONE, plan: NONE, fee: NONE, tmf: NONE, tmc: NONE, tmp: NONE }
+      });
     } catch(err) {
-      alert("Erro ao decodificar Planilha Excel. Garanta que o arquivo possui extensão .xlsx\n" + err.message);
+      alert('Erro ao ler o arquivo Excel: ' + err.message);
+    }
+  };
+
+  // Passo 2: confirmar mapeamento e importar
+  const handleExcelImport = async () => {
+    const { rows, mapping, headers } = excelModal;
+    if (!mapping.name) { alert('Selecione pelo menos a coluna do Nome/Empresa.'); return; }
+
+    const getIdx = (colName) => colName ? headers.indexOf(colName) : -1;
+    const iName = getIdx(mapping.name);
+    const iDoc  = getIdx(mapping.document);
+    const iPlan = getIdx(mapping.plan);
+    const iFee  = getIdx(mapping.fee);
+    const iTmf  = getIdx(mapping.tmf);
+    const iTmc  = getIdx(mapping.tmc);
+    const iTmp  = getIdx(mapping.tmp);
+
+    setUploading(true);
+    setExcelModal(null);
+    let successCount = 0;
+    for (const row of rows) {
+      const cName = iName >= 0 ? row[iName] : null;
+      if (!cName) continue;
+      const valTmf = safeNumber(iTmf >= 0 ? row[iTmf] : 0);
+      const valTmc = safeNumber(iTmc >= 0 ? row[iTmc] : 0);
+      const valTmp = safeNumber(iTmp >= 0 ? row[iTmp] : 0);
+      const valTtc = valTmf + valTmc + valTmp;
+      try {
+        await onAddClient({
+          name: String(cName),
+          monthly_fee: safeNumber(iFee >= 0 ? row[iFee] : 0),
+          contracted_hours: valTtc,
+          document: iDoc >= 0 && row[iDoc] ? String(row[iDoc]) : null,
+          plan: iPlan >= 0 && row[iPlan] ? String(row[iPlan]) : null,
+          tmf: valTmf, tmc: valTmc, tmp: valTmp
+        });
+        successCount++;
+      } catch(err) {
+        console.error('Erro na linha:', cName, err);
+        break;
+      }
     }
     setUploading(false);
-    e.target.value = ''; 
+    alert(`✅ ${successCount} clientes importados com sucesso!`);
   };
+
+  const updateMapping = (field, value) => {
+    setExcelModal(prev => ({ ...prev, mapping: { ...prev.mapping, [field]: value } }));
+  };
+
+  const FIELDS = [
+    { key: 'name',     label: 'Nome / Empresa *' },
+    { key: 'document', label: 'CPF / CNPJ' },
+    { key: 'plan',     label: 'Plano / Serviço' },
+    { key: 'fee',      label: 'Mensalidade (R$)' },
+    { key: 'tmf',      label: 'TMF (Tempo Médio Fiscal)' },
+    { key: 'tmc',      label: 'TMC (Tempo Médio Contábil)' },
+    { key: 'tmp',      label: 'TMP (Tempo Médio Pessoal)' },
+  ];
 
   return (
     <div className="container">
+      {/* MODAL DE MAPEAMENTO */}
+      {excelModal && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}>
+          <div className="card" style={{ width:'100%', maxWidth:'520px', maxHeight:'90vh', overflowY:'auto' }}>
+            <h3 style={{ marginBottom:'0.5rem' }}>📋 Mapear Colunas do Excel</h3>
+            <p style={{ fontSize:'0.85rem', color:'var(--text-muted)', marginBottom:'1.5rem' }}>
+              Para cada campo do sistema, selecione qual coluna da sua planilha corresponde.
+            </p>
+            {FIELDS.map(f => (
+              <div key={f.key} style={{ marginBottom:'1rem' }}>
+                <label style={{ display:'block', fontSize:'0.82rem', fontWeight:600, marginBottom:'0.3rem' }}>{f.label}</label>
+                <select value={excelModal.mapping[f.key]} onChange={e => updateMapping(f.key, e.target.value)}>
+                  <option value="">-- Não mapear --</option>
+                  {excelModal.headers.map((h, i) => (
+                    <option key={i} value={h}>{h}</option>
+                  ))}
+                </select>
+              </div>
+            ))}
+            <p style={{ fontSize:'0.8rem', color:'var(--text-muted)', margin:'0.5rem 0 1rem' }}>
+              💡 TTC será calculado automaticamente como TMF + TMC + TMP
+            </p>
+            <div style={{ display:'flex', gap:'1rem' }}>
+              <button className="btn-primary" onClick={handleExcelImport}>Importar Agora</button>
+              <button onClick={() => setExcelModal(null)} style={{ background:'transparent', border:'1px solid var(--border)', borderRadius:'8px', padding:'0.75rem 1.5rem', cursor:'pointer' }}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="page-header flex justify-between items-center" style={{ flexWrap: 'wrap' }}>
         <div>
           <h1 className="page-title"><Users size={28} color="var(--primary)" /> Gerenciar Clientes</h1>
@@ -581,7 +574,7 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
         <div>
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: 'var(--success)', color: '#fff', padding: '0.75rem 1.5rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>
             {uploading ? 'Importando...' : <><Upload size={20} /> Importar Excel</>}
-            <input type="file" accept=".xlsx" onChange={handleExcelUpload} style={{ display: 'none' }} disabled={uploading} />
+            <input type="file" accept=".xlsx" onChange={handleExcelSelect} style={{ display: 'none' }} disabled={uploading} />
           </label>
         </div>
       </div>
@@ -593,12 +586,10 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
           <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>CPF/CNPJ</label><input placeholder="Documento Fiscal" value={document} onChange={e => setDocument(e.target.value)} style={{marginBottom: 0}} /></div>
           <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>Plano / Serviço</label><input placeholder="Ex: Premium" value={plan} onChange={e => setPlan(e.target.value)} style={{marginBottom: 0}} /></div>
           <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>Mensalidade (R$) *</label><input type="number" step="0.01" required value={fee} onChange={e => setFee(e.target.value)} style={{marginBottom: 0}} /></div>
-          
           <div>
             <label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:600, color: 'var(--primary)'}}>TTC (Calculado Automaticamente)</label>
             <input type="text" readOnly disabled value={(safeNumber(tmf) + safeNumber(tmc) + safeNumber(tmp)) + " h"} style={{marginBottom: 0, background: '#f3f4f6', fontWeight: 700}} />
           </div>
-
           <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>TMF (Tempo Médio Fiscal)</label><input type="number" step="0.01" value={tmf} placeholder="Horas" onChange={e => setTmf(e.target.value)} style={{marginBottom: 0}} /></div>
           <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>TMC (Tempo Médio Contábil)</label><input type="number" step="0.01" value={tmc} placeholder="Horas" onChange={e => setTmc(e.target.value)} style={{marginBottom: 0}} /></div>
           <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>TMP (Tempo Médio Pessoal)</label><input type="number" step="0.01" value={tmp} placeholder="Horas" onChange={e => setTmp(e.target.value)} style={{marginBottom: 0}} /></div>
@@ -624,10 +615,10 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
                 <td>{c.document || '-'}</td>
                 <td>{c.plan || '-'}</td>
                 <td>R$ {parseFloat(c.monthly_fee).toFixed(2)}</td>
-                <td>{c.contracted_hours} h</td>
-                <td>{c.tmf || 0} h</td>
-                <td>{c.tmc || 0} h</td>
-                <td>{c.tmp || 0} h</td>
+                <td>{(c.contracted_hours || 0).toFixed(1)} h</td>
+                <td>{(c.tmf || 0).toFixed(1)} h</td>
+                <td>{(c.tmc || 0).toFixed(1)} h</td>
+                <td>{(c.tmp || 0).toFixed(1)} h</td>
                 <td><button className="danger" onClick={() => onDeleteClient(c.id)}>Excluir</button></td>
               </tr>
             ))}
@@ -637,6 +628,8 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
     </div>
   );
 }
+
+
 
 function Settings({ config, onSaveConfig }) {
   const [cost, setCost] = useState(config?.hourly_cost || '');
