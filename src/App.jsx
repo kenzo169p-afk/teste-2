@@ -83,6 +83,10 @@ export default function App() {
       <div className="main-area">
         {/* TOPBAR */}
         <header className="topbar">
+          <div className="mobile-logo">
+            <Activity size={20} color="var(--primary)" />
+            <span>Controle</span> Agora
+          </div>
           <div className="user-dropdown" onClick={() => { if(window.confirm('Deseja realmente sair?')) setUser(null); }}>
             <span style={{ fontWeight: 500, fontSize: '0.95rem' }}>{user.name.split(' ')[0]}</span>
             <div className="avatar" style={{width: '28px', height: '28px', fontSize: '0.8rem'}}>{user.name.charAt(0).toUpperCase()}</div>
