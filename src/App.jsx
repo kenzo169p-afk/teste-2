@@ -424,7 +424,27 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
   const [uploading, setUploading] = useState(false);
 
   const safeNumber = (val) => {
-    const p = parseFloat(val);
+    if (typeof val === 'number') return val;
+    if (!val) return 0;
+    const s = String(val).trim();
+    
+    // Suporte para Tempo em Excel (HH:MM)
+    if (s.includes(':') && s.length < 9) {
+      const parts = s.split(':').map(Number);
+      if(parts.length >= 2) {
+        return (isNaN(parts[0]) ? 0 : parts[0]) + (isNaN(parts[1]) ? 0 : parts[1] / 60);
+      }
+    }
+
+    // Limpeza de moeda brasileira e formatação
+    const normalized = s
+      .replace('R$', '')
+      .replace(/\s/g, '')
+      .replace(/\.(?=\d{3,}(\,|$))/g, '') // Remove ponto de milhar se houver vírgula depois
+      .replace(',', '.')
+      .replace(/[^\d.]/g, ''); 
+    
+    const p = parseFloat(normalized);
     return isNaN(p) ? 0 : p;
   };
 
@@ -456,45 +476,47 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
       const rows = await readXlsxFile(file);
       if(rows.length < 2) throw new Error("A planilha precisa ter uma linha de cabeçalho e os dados.");
       
-      const headerRow = rows[0];
-      const getIdx = (words) => headerRow.findIndex(h => h && words.some(w => String(h).toLowerCase().includes(w)));
+      const headerRow = rows[0].map(h => String(h || '').toLowerCase().trim());
+      const getIdx = (words) => headerRow.findIndex(h => words.some(w => h.includes(w)));
       
       const iName = getIdx(['nome', 'cliente', 'empresa', 'razão', 'razao']);
-      const iDoc = getIdx(['cpf', 'cnpj', 'documento']);
-      const iPlan = getIdx(['plano', 'pacote', 'serviço']);
-      const iFee = getIdx(['mensalidade', 'valor', 'mensal']);
-      const iHours = getIdx(['ttc', 'horas', 'tempo', 'contrato', 'franquia', 'vendido']);
-      const iTmf = getIdx(['tmf', 'fiscal']);
-      const iTmc = getIdx(['tmc', 'contábil', 'contabil']);
-      const iTmp = getIdx(['tmp', 'pessoal']);
+      const iDoc = getIdx(['cpf', 'cnpj', 'documento', 'doc']);
+      const iPlan = getIdx(['plano', 'pacote', 'serviço', 'servico', 'categoria']);
+      const iFee = getIdx(['mensalidade', 'valor', 'mensal', 'honorário', 'honorario', 'faturamento']);
+      const iHours = getIdx(['ttc', 'total contratado', 'franquia', 'tempo total', 'vendido', 'horas totais']);
+      const iTmf = getIdx(['tmf', 'fiscal', 'tempo f']);
+      const iTmc = getIdx(['tmc', 'contábil', 'contabil', 'tempo c']);
+      const iTmp = getIdx(['tmp', 'pessoal', 'dp', 'rh', 'folha']);
 
       if(iName === -1) {
-         alert("Aviso: A planilha não possui formato claro de cabeçalho. Vou tentar ler no padrão antigo, mas os dados podem ficar bagunçados.");
+         alert("Não consegui identificar a coluna de 'Nome'. Use um cabeçalho como 'Cliente' ou 'Empresa'.");
+         setUploading(false);
+         return;
       }
 
       const dataRows = rows.slice(1);
       
       let successCount = 0;
       for(let row of dataRows) {
-        // Leitura Inteligente ou Fallback para posições fixas
-        const cName = iName >= 0 ? row[iName] : row[0];
-        const cFee = iFee >= 0 ? row[iFee] : row[1];
-        const cHours = iHours >= 0 ? row[iHours] : row[2];
-        const cDoc = iDoc >= 0 ? row[iDoc] : row[3];
-        const cPlan = iPlan >= 0 ? row[iPlan] : null;
-        const cTmf = iTmf >= 0 ? row[iTmf] : row[4];
-        const cTmc = iTmc >= 0 ? row[iTmc] : row[5];
-        const cTmp = iTmp >= 0 ? row[iTmp] : row[6];
+        const cName = row[iName];
+        if(!cName) continue;
 
-        if(cName) {
-           try {
+        const cFee = iFee >= 0 ? row[iFee] : 0;
+        const cDoc = iDoc >= 0 ? row[iDoc] : null;
+        const cPlan = iPlan >= 0 ? row[iPlan] : null;
+        const cHours = iHours >= 0 ? row[iHours] : 0;
+        const cTmf = iTmf >= 0 ? row[iTmf] : 0;
+        const cTmc = iTmc >= 0 ? row[iTmc] : 0;
+        const cTmp = iTmp >= 0 ? row[iTmp] : 0;
+
+        try {
              const valTmf = safeNumber(cTmf);
              const valTmc = safeNumber(cTmc);
              const valTmp = safeNumber(cTmp);
              let valTtc = valTmf + valTmc + valTmp;
              
-             // Se não houver soma nos médios, tenta pegar o TTC direto da coluna
-             if (valTtc === 0 && iHours >= 0) {
+             // Se os médios forem zero, tenta usar a coluna TTC direto
+             if (valTtc === 0) {
                valTtc = safeNumber(cHours);
              }
 
@@ -513,7 +535,6 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
              break; // Para a inserção se der erro de banco
            }
         }
-      }
       if(successCount > 0) alert(`${successCount} clientes importados com sucesso!`);
     } catch(err) {
       alert("Erro ao decodificar Planilha Excel. Garanta que o arquivo possui extensão .xlsx\n" + err.message);
