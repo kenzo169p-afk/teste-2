@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabaseClient';
-import { LayoutDashboard, Users, Clock, Settings as SettingsIcon, LogOut, ArrowRight, Activity, DollarSign, Briefcase, FileText } from 'lucide-react';
+import { LayoutDashboard, Users, Clock, Settings as SettingsIcon, LogOut, ArrowRight, Activity, DollarSign, Briefcase, FileText, Info, PlayCircle, BarChart3 } from 'lucide-react';
 
 // Mantemos apenas o login no LocalStorage para o usuário permanecer logado na máquina
 const getStorage = (key, defaultVal) => {
@@ -280,6 +280,27 @@ function Dashboard({ user, clients, logs, config, setView }) {
               </div>
             </div>
             <ArrowRight size={18} color="var(--text-muted)" />
+          </div>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: '1.5rem', border: '1px solid var(--primary)' }}>
+        <div className="flex items-center" style={{ gap: '0.75rem', marginBottom: '1.5rem' }}>
+           <Info size={24} color="var(--primary)" />
+           <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Como utilizar o BPO Profit Tracker?</h3>
+        </div>
+        <div className="grid grid-3">
+          <div className="tutorial-step">
+            <h4><SettingsIcon size={16} /> 1. Configurar Custos e Clientes</h4>
+            <p>Acesse a aba <strong>Escritório</strong> para definir o custo-hora da sua empresa. Em seguida, vá em <strong>Clientes</strong> e adicione sua carteira, informando a mensalidade cobrada e as horas contratadas.</p>
+          </div>
+          <div className="tutorial-step">
+            <h4><PlayCircle size={16} /> 2. Aponte o Tempo Trabalhado</h4>
+            <p>Peça para sua equipe acessar o <strong>Timer</strong>. Basta escolher o cliente e iniciar o cronômetro enquanto trabalham. Todos os dados serão salvos em nuvem automaticamente.</p>
+          </div>
+          <div className="tutorial-step">
+            <h4><BarChart3 size={16} /> 3. Análise pelo Dashboard</h4>
+            <p>Para cada segundo registrado, o sistema cruzará os dados, mostrando quem dá lucro ou prejuízo, a margem de cada cliente e a sua eficiência operacional atualizada em tempo real.</p>
           </div>
         </div>
       </div>

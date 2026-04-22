@@ -126,3 +126,8 @@ td { font-size: 0.95rem; }
   .mobile-logo { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; color: var(--text); }
   .mobile-logo span { color: var(--primary); }
 }
+
+/* Tutorial */
+.tutorial-step { background: #f9fafb; padding: 1.25rem; border-radius: 8px; border: 1px solid var(--border); }
+.tutorial-step h4 { color: var(--primary); margin-bottom: 0.5rem; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem; }
+.tutorial-step p { font-size: 0.85rem; margin: 0; line-height: 1.4; }
