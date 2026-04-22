@@ -50,7 +50,7 @@ p { margin-bottom: 1rem; color: var(--text-muted); }
 .container { max-width: 1200px; margin: 0 auto; }
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05); margin-bottom: 1.5rem; }
 .flex { display: flex; gap: 1rem; }
-.flex-col { flex-direction: column; }
+.flex-col { display: flex; flex-direction: column; }
 .items-center { align-items: center; }
 .justify-between { justify-content: space-between; }
 .grid { display: grid; gap: 1.5rem; }
