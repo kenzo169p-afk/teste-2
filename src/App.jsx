@@ -430,19 +430,20 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
 
   const handleAdd = async (e) => {
     e.preventDefault();
-    if(name && fee && hours) {
+    const calculatedTtc = safeNumber(tmf) + safeNumber(tmc) + safeNumber(tmp);
+    if(name && fee) {
       try {
         await onAddClient({ 
           name, 
           monthly_fee: safeNumber(fee), 
-          contracted_hours: safeNumber(hours),
+          contracted_hours: calculatedTtc,
           document: document || null,
           plan: plan || null,
           tmf: safeNumber(tmf),
           tmc: safeNumber(tmc),
           tmp: safeNumber(tmp)
         });
-        setName(''); setFee(''); setHours(''); setDocument(''); setPlan(''); setTmf(''); setTmc(''); setTmp('');
+        setName(''); setFee(''); setDocument(''); setPlan(''); setTmf(''); setTmc(''); setTmp('');
       } catch(e) {}
     }
   };
@@ -462,7 +463,7 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
       const iDoc = getIdx(['cpf', 'cnpj', 'documento']);
       const iPlan = getIdx(['plano', 'pacote', 'serviço']);
       const iFee = getIdx(['mensalidade', 'valor', 'mensal']);
-      const iHours = getIdx(['horas', 'tempo', 'contrato', 'franquia', 'vendido']);
+      const iHours = getIdx(['ttc', 'horas', 'tempo', 'contrato', 'franquia', 'vendido']);
       const iTmf = getIdx(['tmf', 'fiscal']);
       const iTmc = getIdx(['tmc', 'contábil', 'contabil']);
       const iTmp = getIdx(['tmp', 'pessoal']);
@@ -487,15 +488,25 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
 
         if(cName) {
            try {
+             const valTmf = safeNumber(cTmf);
+             const valTmc = safeNumber(cTmc);
+             const valTmp = safeNumber(cTmp);
+             let valTtc = valTmf + valTmc + valTmp;
+             
+             // Se não houver soma nos médios, tenta pegar o TTC direto da coluna
+             if (valTtc === 0 && iHours >= 0) {
+               valTtc = safeNumber(cHours);
+             }
+
              await onAddClient({
                name: String(cName),
                monthly_fee: safeNumber(cFee),
-               contracted_hours: safeNumber(cHours),
+               contracted_hours: valTtc,
                document: cDoc ? String(cDoc) : null,
                plan: cPlan ? String(cPlan) : null,
-               tmf: safeNumber(cTmf),
-               tmc: safeNumber(cTmc),
-               tmp: safeNumber(cTmp)
+               tmf: valTmf,
+               tmc: valTmc,
+               tmp: valTmp
              });
              successCount++;
            } catch(err) {
@@ -533,8 +544,12 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
           <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>CPF/CNPJ</label><input placeholder="Documento Fiscal" value={document} onChange={e => setDocument(e.target.value)} style={{marginBottom: 0}} /></div>
           <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>Plano / Serviço</label><input placeholder="Ex: Premium" value={plan} onChange={e => setPlan(e.target.value)} style={{marginBottom: 0}} /></div>
           <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>Mensalidade (R$) *</label><input type="number" step="0.01" required value={fee} onChange={e => setFee(e.target.value)} style={{marginBottom: 0}} /></div>
-          <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>Tempo Vendido (Horas/mês) *</label><input type="number" step="1" required value={hours} onChange={e => setHours(e.target.value)} style={{marginBottom: 0}} /></div>
           
+          <div>
+            <label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:600, color: 'var(--primary)'}}>TTC (Calculado Automaticamente)</label>
+            <input type="text" readOnly disabled value={(safeNumber(tmf) + safeNumber(tmc) + safeNumber(tmp)) + " h"} style={{marginBottom: 0, background: '#f3f4f6', fontWeight: 700}} />
+          </div>
+
           <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>TMF (Tempo Médio Fiscal)</label><input type="number" step="0.01" value={tmf} placeholder="Horas" onChange={e => setTmf(e.target.value)} style={{marginBottom: 0}} /></div>
           <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>TMC (Tempo Médio Contábil)</label><input type="number" step="0.01" value={tmc} placeholder="Horas" onChange={e => setTmc(e.target.value)} style={{marginBottom: 0}} /></div>
           <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>TMP (Tempo Médio Pessoal)</label><input type="number" step="0.01" value={tmp} placeholder="Horas" onChange={e => setTmp(e.target.value)} style={{marginBottom: 0}} /></div>
@@ -552,7 +567,7 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
           )}
         </div>
         <table>
-          <thead><tr><th>Cliente</th><th>Documento</th><th>Plano</th><th>Mensalidade</th><th>Contrato</th><th>TMF</th><th>TMC</th><th>TMP</th><th>Ação</th></tr></thead>
+          <thead><tr><th>Cliente</th><th>Documento</th><th>Plano</th><th>Mensalidade</th><th>TTC</th><th>TMF</th><th>TMC</th><th>TMP</th><th>Ação</th></tr></thead>
           <tbody>
             {clients.map(c => (
               <tr key={c.id}>
