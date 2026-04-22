@@ -2,7 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabaseClient';
 
 // Mantemos apenas o login no LocalStorage para o usuário permanecer logado na máquina
-const getStorage = (key, defaultVal) => JSON.parse(localStorage.getItem(key)) || defaultVal;
+const getStorage = (key, defaultVal) => {
+  try {
+    const item = localStorage.getItem(key);
+    return item ? JSON.parse(item) : defaultVal;
+  } catch (e) {
+    return defaultVal;
+  }
+};
 const setStorage = (key, val) => localStorage.setItem(key, JSON.stringify(val));
 
 export default function App() {
