@@ -417,6 +417,7 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
   const [fee, setFee] = useState('');
   const [hours, setHours] = useState('');
   const [document, setDocument] = useState('');
+  const [plan, setPlan] = useState('');
   const [tmf, setTmf] = useState('');
   const [tmc, setTmc] = useState('');
   const [tmp, setTmp] = useState('');
@@ -436,11 +437,12 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
           monthly_fee: safeNumber(fee), 
           contracted_hours: safeNumber(hours),
           document: document || null,
+          plan: plan || null,
           tmf: safeNumber(tmf),
           tmc: safeNumber(tmc),
           tmp: safeNumber(tmp)
         });
-        setName(''); setFee(''); setHours(''); setDocument(''); setTmf(''); setTmc(''); setTmp('');
+        setName(''); setFee(''); setHours(''); setDocument(''); setPlan(''); setTmf(''); setTmc(''); setTmp('');
       } catch(e) {}
     }
   };
@@ -451,12 +453,38 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
     setUploading(true);
     try {
       const rows = await readXlsxFile(file);
+      if(rows.length < 2) throw new Error("A planilha precisa ter uma linha de cabeçalho e os dados.");
+      
+      const headerRow = rows[0];
+      const getIdx = (words) => headerRow.findIndex(h => h && words.some(w => String(h).toLowerCase().includes(w)));
+      
+      const iName = getIdx(['nome', 'cliente', 'empresa', 'razão', 'razao']);
+      const iDoc = getIdx(['cpf', 'cnpj', 'documento']);
+      const iPlan = getIdx(['plano', 'pacote', 'serviço']);
+      const iFee = getIdx(['mensalidade', 'valor', 'mensal']);
+      const iHours = getIdx(['horas', 'tempo', 'contrato', 'franquia', 'vendido']);
+      const iTmf = getIdx(['tmf', 'fiscal']);
+      const iTmc = getIdx(['tmc', 'contábil', 'contabil']);
+      const iTmp = getIdx(['tmp', 'pessoal']);
+
+      if(iName === -1) {
+         alert("Aviso: A planilha não possui formato claro de cabeçalho. Vou tentar ler no padrão antigo, mas os dados podem ficar bagunçados.");
+      }
+
       const dataRows = rows.slice(1);
       
       let successCount = 0;
       for(let row of dataRows) {
-        // Exemplo esperado de Colunas: Nome | Mensalidade | Horas | CPF/CNPJ | TMF | TMC | TMP
-        const [cName, cFee, cHours, cDoc, cTmf, cTmc, cTmp] = row;
+        // Leitura Inteligente ou Fallback para posições fixas
+        const cName = iName >= 0 ? row[iName] : row[0];
+        const cFee = iFee >= 0 ? row[iFee] : row[1];
+        const cHours = iHours >= 0 ? row[iHours] : row[2];
+        const cDoc = iDoc >= 0 ? row[iDoc] : row[3];
+        const cPlan = iPlan >= 0 ? row[iPlan] : null;
+        const cTmf = iTmf >= 0 ? row[iTmf] : row[4];
+        const cTmc = iTmc >= 0 ? row[iTmc] : row[5];
+        const cTmp = iTmp >= 0 ? row[iTmp] : row[6];
+
         if(cName) {
            try {
              await onAddClient({
@@ -464,6 +492,7 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
                monthly_fee: safeNumber(cFee),
                contracted_hours: safeNumber(cHours),
                document: cDoc ? String(cDoc) : null,
+               plan: cPlan ? String(cPlan) : null,
                tmf: safeNumber(cTmf),
                tmc: safeNumber(cTmc),
                tmp: safeNumber(cTmp)
@@ -502,6 +531,7 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
         <form onSubmit={handleAdd} className="grid grid-3" style={{ marginTop: '1rem', alignItems: 'end' }}>
           <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>Nome da Empresa *</label><input placeholder="Ex: Acme Corp" required value={name} onChange={e => setName(e.target.value)} style={{marginBottom: 0}} /></div>
           <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>CPF/CNPJ</label><input placeholder="Documento Fiscal" value={document} onChange={e => setDocument(e.target.value)} style={{marginBottom: 0}} /></div>
+          <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>Plano / Serviço</label><input placeholder="Ex: Premium" value={plan} onChange={e => setPlan(e.target.value)} style={{marginBottom: 0}} /></div>
           <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>Mensalidade (R$) *</label><input type="number" step="0.01" required value={fee} onChange={e => setFee(e.target.value)} style={{marginBottom: 0}} /></div>
           <div><label style={{display:'block', marginBottom:'0.5rem', fontSize:'0.85rem', fontWeight:500}}>Tempo Vendido (Horas/mês) *</label><input type="number" step="1" required value={hours} onChange={e => setHours(e.target.value)} style={{marginBottom: 0}} /></div>
           
@@ -522,12 +552,13 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
           )}
         </div>
         <table>
-          <thead><tr><th>Cliente</th><th>CPF/CNPJ</th><th>Mensalidade</th><th>Tempo Contrato</th><th>TMF</th><th>TMC</th><th>TMP</th><th>Ação</th></tr></thead>
+          <thead><tr><th>Cliente</th><th>Documento</th><th>Plano</th><th>Mensalidade</th><th>Contrato</th><th>TMF</th><th>TMC</th><th>TMP</th><th>Ação</th></tr></thead>
           <tbody>
             {clients.map(c => (
               <tr key={c.id}>
                 <td style={{ fontWeight: 500 }}>{c.name}</td>
                 <td>{c.document || '-'}</td>
+                <td>{c.plan || '-'}</td>
                 <td>R$ {parseFloat(c.monthly_fee).toFixed(2)}</td>
                 <td>{c.contracted_hours} h</td>
                 <td>{c.tmf || 0} h</td>
