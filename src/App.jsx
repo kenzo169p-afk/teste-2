@@ -502,10 +502,25 @@ function Clients({ clients, onAddClient, onDeleteClient, onDeleteAllClients }) {
       const iTTC  = findCol('ttc', 'tempo total contratado', 'total contratado', 'franquia', 'tempo vendido');
 
       if(iName === -1) {
-        alert(`Não encontrei a coluna de 'Nome/Cliente'.\n\nColunas da sua planilha:\n${rawHeaders.join(' | ')}\n\nPor favor, use um dos seguintes nomes: Nome, Cliente, Empresa, Razao Social`);
+        alert(`Não encontrei a coluna de 'Nome/Cliente'.\n\nColunas detectadas na sua planilha:\n${rawHeaders.map((h,i) => `  Col ${i+1}: "${h}"`).join('\n')}\n\nUse um dos cabeçalhos: Nome, Cliente, Empresa, Razao Social`);
         setUploading(false);
         return;
       }
+
+      // DEBUG: mostra o mapeamento encontrado para o usuário confirmar
+      const mapReport = [
+        `Nome: col ${iName+1} = "${rawHeaders[iName]}"`,
+        iDoc  >= 0 ? `Documento: col ${iDoc+1}  = "${rawHeaders[iDoc]}"` : `Documento: NÃO ENCONTRADO`,
+        iPlan >= 0 ? `Plano: col ${iPlan+1}     = "${rawHeaders[iPlan]}"` : `Plano: NÃO ENCONTRADO`,
+        iFee  >= 0 ? `Mensalidade: col ${iFee+1} = "${rawHeaders[iFee]}"` : `Mensalidade: NÃO ENCONTRADO`,
+        iTmf  >= 0 ? `TMF: col ${iTmf+1}        = "${rawHeaders[iTmf]}"` : `TMF: NÃO ENCONTRADO (ficará 0)`,
+        iTmc  >= 0 ? `TMC: col ${iTmc+1}        = "${rawHeaders[iTmc]}"` : `TMC: NÃO ENCONTRADO (ficará 0)`,
+        iTmp  >= 0 ? `TMP: col ${iTmp+1}        = "${rawHeaders[iTmp]}"` : `TMP: NÃO ENCONTRADO (ficará 0)`,
+        iTTC  >= 0 ? `TTC: col ${iTTC+1}        = "${rawHeaders[iTTC]}"` : `TTC: NÃO ENCONTRADO (ficará 0)`,
+      ].join('\n');
+      
+      const confirm = window.confirm(`Mapeamento de colunas detectado:\n\n${mapReport}\n\nDeseja prosseguir com a importação?`);
+      if (!confirm) { setUploading(false); return; }
 
       const dataRows = rows.slice(1);
       let successCount = 0;
